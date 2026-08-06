@@ -1,0 +1,26 @@
+[project]
+name = "vehicle-emissions-prediction-mlops"
+version = "0.1.0"
+description = "MLOps project for vehicle CO2 emissions prediction using machine learning and Streamlit"
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    "pandas",
+    "numpy",
+    "scikit-learn",
+    "matplotlib",
+    "seaborn",
+    "jupyter",
+    "ipykernel",
+    "streamlit",
+    "mlflow",
+    "dvc",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+    "black",
+]
