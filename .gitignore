@@ -43,9 +43,11 @@ env/
 # Gérées par DVC + DagsHub
 # ==================================================
 
-data/raw/*
-data/interim/*
-data/processed/*
+# Les fichiers de données suivis par DVC sont automatiquement
+# ajoutés aux .gitignore locaux par la commande `dvc add`.
+#
+# Les fichiers .dvc et les .gitignore générés par DVC
+# doivent rester versionnés avec Git.
 
 !data/raw/.gitkeep
 !data/interim/.gitkeep
@@ -56,9 +58,6 @@ data/processed/*
 # Modèles Machine Learning
 # Gérés par MLflow / DVC
 # ==================================================
-
-models/trained/*
-models/experiments/*
 
 !models/trained/.gitkeep
 !models/experiments/.gitkeep
