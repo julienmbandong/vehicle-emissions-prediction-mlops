@@ -15,7 +15,7 @@ dependencies = [
     "ipykernel",
     "streamlit",
     "mlflow",
-    "dvc",
+    "dvc[s3]",
 ]
 
 [dependency-groups]
