@@ -1,0 +1,10 @@
+stages:
+  preprocess:
+    cmd: python -m vehicle_emissions.preprocessing.clean_data --full
+
+    deps:
+      - src/vehicle_emissions/preprocessing/clean_data.py
+      - data/raw/data_2024.csv
+
+    outs:
+      - data/processed/data_2024_cleaned.csv
