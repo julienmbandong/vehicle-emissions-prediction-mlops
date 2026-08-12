@@ -1,0 +1,19 @@
+schema: '2.0'
+stages:
+  preprocess:
+    cmd: python -m vehicle_emissions.preprocessing.clean_data --full
+    deps:
+    - path: data/raw/data_2024.csv
+      hash: md5
+      md5: 697b092dae882fac5e828bd74c6b6988
+      size: 2581827681
+      isexec: true
+    - path: src/vehicle_emissions/preprocessing/clean_data.py
+      hash: md5
+      md5: b185268672cac791b88b4003cb3bcde1
+      size: 10608
+    outs:
+    - path: data/processed/data_2024_cleaned.csv
+      hash: md5
+      md5: c432b6b9d0fc02cb41e148f2d44ab836
+      size: 2510339919
