@@ -14,10 +14,17 @@ DATE_COLUMN = "registration_date"
 
 NROWS_TEST = 100_000
 
+TEMPORAL_FEATURES = {
+    "registration_month_sin",
+    "registration_month_cos",
+}
+
+# Colonnes nécessaires au fonctionnement du pipeline.
+# Il s'agit des variables effectivement utilisées par les transformations
+# ou indispensables aux contrôles d'entrée.
 REQUIRED_COLUMNS = {
     "vehicle_record_id",
     "country",
-    "manufacturer_name_eu",
     "manufacturer_make",
     "vehicle_category_type",
     "fuel_type",
@@ -25,31 +32,63 @@ REQUIRED_COLUMNS = {
     "mass_running_order_kg",
     "engine_capacity_cm3",
     "engine_power_kw",
-    "registration_date",
+    DATE_COLUMN,
     TARGET_COLUMN,
 }
 
+# Sélection finale établie dans le notebook 02.
+#
+# registration_month n'apparaît pas ici car, contrairement au notebook,
+# le script de production ne l'ajoute jamais au DataFrame :
+# le mois est manipulé comme Series temporaire.
 COLUMNS_TO_EXCLUDE = {
+    # Identifiant technique
     "vehicle_record_id",
-    "registration_date",
-    "vehicle_category",
-}
 
-TEMPORAL_FEATURES = {
-    "registration_month_sin",
-    "registration_month_cos",
+    # Références techniques ou administratives
+    "vehicle_family_id",
+    "type_approval_number",
+    "vehicle_variant",
+    "vehicle_version",
+    "rlfi",
+
+    # Date brute remplacée par les composantes temporelles
+    "registration_date",
+
+    # Variable constante
+    "vehicle_category",
+
+    # Variables constructeur non retenues
+    "manufacturer_pool",
+    "manufacturer_name_eu",
+    "manufacturer_name_oem",
 }
 
 
 # ---------------------------------------------------------------------
-# Chargement
+# Chargement des données
 # ---------------------------------------------------------------------
 
 def load_data(
     input_path: Path,
     nrows: int | None = None,
 ) -> pd.DataFrame:
-    """Charge le dataset nettoyé utilisé pour le Feature Engineering."""
+    """
+    Charge le dataset nettoyé utilisé pour le Feature Engineering.
+
+    Parameters
+    ----------
+    input_path : Path
+        Chemin du dataset nettoyé.
+    nrows : int | None
+        Nombre maximal de lignes à charger.
+        None signifie que l'intégralité du fichier est chargée.
+
+    Returns
+    -------
+    pd.DataFrame
+        Dataset chargé.
+    """
 
     if not input_path.is_file():
         raise FileNotFoundError(
@@ -81,7 +120,9 @@ def load_data(
 def validate_input_schema(
     df: pd.DataFrame,
 ) -> None:
-    """Vérifie la présence des variables indispensables."""
+    """
+    Vérifie la conformité minimale du dataset d'entrée.
+    """
 
     missing_columns = sorted(
         REQUIRED_COLUMNS - set(df.columns)
@@ -89,8 +130,14 @@ def validate_input_schema(
 
     if missing_columns:
         raise ValueError(
-            "Variables attendues absentes : "
+            "Variables indispensables absentes : "
             + ", ".join(missing_columns)
+        )
+
+    if not df.columns.is_unique:
+        raise ValueError(
+            "Les noms de colonnes du dataset d'entrée "
+            "ne sont pas uniques."
         )
 
     if not pd.api.types.is_datetime64_any_dtype(
@@ -99,6 +146,12 @@ def validate_input_schema(
         raise TypeError(
             f"La colonne '{DATE_COLUMN}' "
             "doit être au format datetime."
+        )
+
+    if df[TARGET_COLUMN].isna().any():
+        raise ValueError(
+            f"La variable cible '{TARGET_COLUMN}' "
+            "contient des valeurs manquantes."
         )
 
     print("✅ Schéma d'entrée valide.")
@@ -114,11 +167,15 @@ def add_temporal_features(
     """
     Crée les représentations cycliques du mois d'immatriculation.
 
-    Le mois brut est utilisé uniquement comme variable intermédiaire
-    et n'est pas conservé dans le dataset final.
+    Le mois brut est conservé uniquement dans une Series temporaire.
+    Il n'est pas ajouté au DataFrame de production.
     """
 
-    registration_month = df[DATE_COLUMN].dt.month
+    registration_month = (
+        df[DATE_COLUMN]
+        .dt
+        .month
+    )
 
     if registration_month.isna().any():
         raise ValueError(
@@ -150,30 +207,37 @@ def add_temporal_features(
 
 
 # ---------------------------------------------------------------------
-# Sélection des variables
+# Sélection finale des variables
 # ---------------------------------------------------------------------
 
 def select_features(
     df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Exclut les variables qui ne doivent pas alimenter
-    le futur pipeline de modélisation.
+    Applique la sélection finale des variables établie
+    dans le notebook 02 de Feature Engineering.
     """
 
     columns_present_to_exclude = sorted(
-        COLUMNS_TO_EXCLUDE.intersection(df.columns)
+        COLUMNS_TO_EXCLUDE.intersection(
+            df.columns
+        )
     )
 
-    df.drop(
-        columns=columns_present_to_exclude,
-        inplace=True,
+    df = df.drop(
+        columns=columns_present_to_exclude
     )
 
     print("Variables exclues :")
 
     for column in columns_present_to_exclude:
         print(f"  - {column}")
+
+    print(
+        f"Dataset de features : "
+        f"{len(df):,} observations × "
+        f"{df.shape[1]} variables"
+    )
 
     return df
 
@@ -185,7 +249,10 @@ def select_features(
 def validate_feature_dataset(
     df: pd.DataFrame,
 ) -> None:
-    """Vérifie la cohérence du dataset après Feature Engineering."""
+    """
+    Vérifie que le dataset final respecte les décisions
+    de sélection établies dans le notebook 02.
+    """
 
     quality_checks = {
         "Variable cible présente":
@@ -194,17 +261,10 @@ def validate_feature_dataset(
         "Noms de colonnes uniques":
             df.columns.is_unique,
 
-        "Identifiant technique supprimé":
-            "vehicle_record_id"
-            not in df.columns,
-
-        "Date brute supprimée":
-            DATE_COLUMN
-            not in df.columns,
-
-        "Variable constante vehicle_category supprimée":
-            "vehicle_category"
-            not in df.columns,
+        "Toutes les variables exclues sont absentes":
+            COLUMNS_TO_EXCLUDE.isdisjoint(
+                df.columns
+            ),
 
         "Feature mois sinus présente":
             "registration_month_sin"
@@ -213,6 +273,14 @@ def validate_feature_dataset(
         "Feature mois cosinus présente":
             "registration_month_cos"
             in df.columns,
+
+        "Features temporelles sans valeur manquante":
+            not df[
+                sorted(TEMPORAL_FEATURES)
+            ]
+            .isna()
+            .any()
+            .any(),
     }
 
     failed_checks = []
@@ -230,24 +298,6 @@ def validate_feature_dataset(
             + ", ".join(failed_checks)
         )
 
-    temporal_missing = (
-        df[
-            [
-                "registration_month_sin",
-                "registration_month_cos",
-            ]
-        ]
-        .isna()
-        .sum()
-        .sum()
-    )
-
-    if temporal_missing != 0:
-        raise ValueError(
-            "Les features temporelles contiennent "
-            "des valeurs manquantes."
-        )
-
     print("✅ Dataset de features validé.")
 
 
@@ -259,7 +309,9 @@ def save_features(
     df: pd.DataFrame,
     output_path: Path,
 ) -> None:
-    """Exporte le dataset de Feature Engineering."""
+    """
+    Exporte le dataset produit par le Feature Engineering.
+    """
 
     output_path.parent.mkdir(
         parents=True,
@@ -278,7 +330,7 @@ def save_features(
 
 
 # ---------------------------------------------------------------------
-# Pipeline
+# Pipeline de Feature Engineering
 # ---------------------------------------------------------------------
 
 def build_features(
@@ -286,7 +338,9 @@ def build_features(
     output_path: Path,
     nrows: int | None = None,
 ) -> pd.DataFrame:
-    """Exécute le pipeline complet de Feature Engineering."""
+    """
+    Exécute le pipeline complet de Feature Engineering.
+    """
 
     df = load_data(
         input_path=input_path,
@@ -314,7 +368,9 @@ def build_features(
 # ---------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
-    """Définit les arguments de ligne de commande."""
+    """
+    Définit les arguments de ligne de commande.
+    """
 
     parser = argparse.ArgumentParser(
         description=(
@@ -323,8 +379,10 @@ def parse_args() -> argparse.Namespace:
         )
     )
 
-    mode_group = parser.add_mutually_exclusive_group(
-        required=True
+    mode_group = (
+        parser.add_mutually_exclusive_group(
+            required=True
+        )
     )
 
     mode_group.add_argument(
@@ -353,11 +411,17 @@ def parse_args() -> argparse.Namespace:
 # ---------------------------------------------------------------------
 
 def main() -> None:
-    """Point d'entrée du pipeline de Feature Engineering."""
+    """
+    Point d'entrée du pipeline de Feature Engineering.
+    """
 
     args = parse_args()
 
-    project_root = Path(__file__).resolve().parents[3]
+    project_root = (
+        Path(__file__)
+        .resolve()
+        .parents[3]
+    )
 
     input_path = (
         project_root
