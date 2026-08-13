@@ -8,3 +8,13 @@ stages:
 
     outs:
       - data/processed/data_2024_cleaned.csv
+
+  feature_engineering:
+    cmd: python -m vehicle_emissions.features.build_features --full
+
+    deps:
+      - src/vehicle_emissions/features/build_features.py
+      - data/processed/data_2024_cleaned.csv
+
+    outs:
+      - data/interim/data_2024_features.csv
