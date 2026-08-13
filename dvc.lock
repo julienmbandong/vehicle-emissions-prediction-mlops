@@ -17,3 +17,19 @@ stages:
       hash: md5
       md5: c432b6b9d0fc02cb41e148f2d44ab836
       size: 2510339919
+  feature_engineering:
+    cmd: python -m vehicle_emissions.features.build_features --full
+    deps:
+    - path: data/processed/data_2024_cleaned.csv
+      hash: md5
+      md5: c432b6b9d0fc02cb41e148f2d44ab836
+      size: 2510339919
+    - path: src/vehicle_emissions/features/build_features.py
+      hash: md5
+      md5: c150ecfca87a27f44dd4bd552df484a3
+      size: 9240
+    outs:
+    - path: data/interim/data_2024_features.csv
+      hash: md5
+      md5: 258ec3ca7a2381360d3b7e039e63ddcd
+      size: 2616386249
