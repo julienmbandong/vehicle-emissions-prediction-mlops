@@ -6,7 +6,7 @@ import pandas as pd
 
 
 # ---------------------------------------------------------------------
-# Configuration
+# Configuration générale
 # ---------------------------------------------------------------------
 
 TARGET_COLUMN = "co2_wltp_g_km"
@@ -19,49 +19,137 @@ TEMPORAL_FEATURES = {
     "registration_month_cos",
 }
 
-# Colonnes nécessaires au fonctionnement du pipeline.
-# Il s'agit des variables effectivement utilisées par les transformations
-# ou indispensables aux contrôles d'entrée.
+
+# ---------------------------------------------------------------------
+# Schéma d'entrée attendu
+# ---------------------------------------------------------------------
+#
+# REQUIRED_COLUMNS contient uniquement :
+#
+# 1. les variables nécessaires à une transformation du pipeline ;
+# 2. les variables métier retenues dans le dataset final ;
+# 3. la variable cible.
+#
+# Les identifiants, références techniques, variables redondantes ou autres
+# variables destinées à être supprimées ne sont volontairement PAS déclarés
+# comme obligatoires.
+#
+# Ainsi, le pipeline reste cohérent avec la sélection établie dans
+# le notebook 02 de Feature Engineering.
+# ---------------------------------------------------------------------
+
 REQUIRED_COLUMNS = {
-    "vehicle_record_id",
-    "country",
+    # Variable temporelle nécessaire à la création des features cycliques
+    DATE_COLUMN,
+
+    # Variables catégorielles métier conservées
     "manufacturer_make",
     "vehicle_category_type",
     "fuel_type",
     "fuel_mode",
+
+    # Variables numériques métier conservées
     "mass_running_order_kg",
+    "wltp_test_mass_kg",
     "engine_capacity_cm3",
     "engine_power_kw",
-    DATE_COLUMN,
+    "electric_energy_consumption_wh_km",
+    "co2_reduction_wltp_g_km",
+    "fuel_consumption",
+    "electric_range_km",
+
+    # Variable cible
     TARGET_COLUMN,
 }
 
-# Sélection finale établie dans le notebook 02.
+
+# ---------------------------------------------------------------------
+# Variables à exclure
+# ---------------------------------------------------------------------
 #
-# registration_month n'apparaît pas ici car, contrairement au notebook,
-# le script de production ne l'ajoute jamais au DataFrame :
-# le mois est manipulé comme Series temporaire.
+# Cette liste reprend les décisions finales du notebook 02.
+#
+# Ces colonnes sont supprimées lorsqu'elles sont présentes dans le dataset.
+# Leur absence à l'entrée n'empêche donc pas le pipeline de fonctionner.
+#
+# registration_month n'apparaît pas ici :
+# dans le script de production, le mois est manipulé comme une Series
+# temporaire et n'est jamais ajouté au DataFrame.
+# ---------------------------------------------------------------------
+
 COLUMNS_TO_EXCLUDE = {
+    # Variable de contexte géographique
+    "country",
+
     # Identifiant technique
     "vehicle_record_id",
 
     # Références techniques ou administratives
     "vehicle_family_id",
     "type_approval_number",
+    "vehicle_type",
     "vehicle_variant",
     "vehicle_version",
     "rlfi",
 
-    # Date brute remplacée par les composantes temporelles
-    "registration_date",
+    # Variable textuelle composite à forte cardinalité
+    "commercial_name",
 
-    # Variable constante
-    "vehicle_category",
+    # Variables dont les modalités ne sont pas exploitables
+    # de manière homogène dans l'étude
+    "innovative_technology",
+    "emission_standard",
 
     # Variables constructeur non retenues
     "manufacturer_pool",
     "manufacturer_name_eu",
     "manufacturer_name_oem",
+
+    # Date brute remplacée par les features temporelles
+    DATE_COLUMN,
+
+    # Variable constante
+    "vehicle_category",
+}
+
+
+# ---------------------------------------------------------------------
+# Schéma final attendu
+# ---------------------------------------------------------------------
+#
+# Ce schéma constitue le contrat de sortie du Feature Engineering.
+#
+# Il contient :
+# - 12 variables explicatives métier issues du dataset nettoyé ;
+# - 2 features temporelles créées par le pipeline ;
+# - 1 variable cible.
+#
+# Total attendu : 15 variables.
+# ---------------------------------------------------------------------
+
+EXPECTED_OUTPUT_COLUMNS = {
+    # Variables catégorielles conservées
+    "manufacturer_make",
+    "vehicle_category_type",
+    "fuel_type",
+    "fuel_mode",
+
+    # Variables numériques conservées
+    "mass_running_order_kg",
+    "wltp_test_mass_kg",
+    "engine_capacity_cm3",
+    "engine_power_kw",
+    "electric_energy_consumption_wh_km",
+    "co2_reduction_wltp_g_km",
+    "fuel_consumption",
+    "electric_range_km",
+
+    # Features temporelles
+    "registration_month_sin",
+    "registration_month_cos",
+
+    # Variable cible
+    TARGET_COLUMN,
 }
 
 
@@ -79,10 +167,11 @@ def load_data(
     Parameters
     ----------
     input_path : Path
-        Chemin du dataset nettoyé.
+        Chemin vers le dataset nettoyé.
+
     nrows : int | None
         Nombre maximal de lignes à charger.
-        None signifie que l'intégralité du fichier est chargée.
+        Si None, l'intégralité du dataset est chargée.
 
     Returns
     -------
@@ -122,6 +211,9 @@ def validate_input_schema(
 ) -> None:
     """
     Vérifie la conformité minimale du dataset d'entrée.
+
+    Les contrôles portent uniquement sur les variables nécessaires
+    au Feature Engineering et au dataset final.
     """
 
     missing_columns = sorted(
@@ -167,8 +259,8 @@ def add_temporal_features(
     """
     Crée les représentations cycliques du mois d'immatriculation.
 
-    Le mois brut est conservé uniquement dans une Series temporaire.
-    Il n'est pas ajouté au DataFrame de production.
+    Le mois brut est utilisé comme variable intermédiaire uniquement.
+    Il n'est jamais ajouté au DataFrame.
     """
 
     registration_month = (
@@ -182,6 +274,8 @@ def add_temporal_features(
             "Des valeurs manquantes ont été détectées "
             "dans le mois d'immatriculation."
         )
+
+    df = df.copy()
 
     df["registration_month_sin"] = np.sin(
         2
@@ -214,8 +308,13 @@ def select_features(
     df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Applique la sélection finale des variables établie
+    Applique les décisions finales de sélection établies
     dans le notebook 02 de Feature Engineering.
+
+    Les colonnes définies dans COLUMNS_TO_EXCLUDE sont supprimées
+    lorsqu'elles sont présentes.
+
+    Le dataset est ensuite limité explicitement au schéma final attendu.
     """
 
     columns_present_to_exclude = sorted(
@@ -224,55 +323,83 @@ def select_features(
         )
     )
 
-    df = df.drop(
+    df_features = df.drop(
         columns=columns_present_to_exclude
-    )
+    ).copy()
 
     print("Variables exclues :")
 
     for column in columns_present_to_exclude:
         print(f"  - {column}")
 
-    print(
-        f"Dataset de features : "
-        f"{len(df):,} observations × "
-        f"{df.shape[1]} variables"
+    # Vérification avant sélection stricte
+    missing_expected_columns = sorted(
+        EXPECTED_OUTPUT_COLUMNS
+        - set(df_features.columns)
     )
 
-    return df
+    if missing_expected_columns:
+        raise ValueError(
+            "Variables attendues dans le dataset final absentes : "
+            + ", ".join(missing_expected_columns)
+        )
+
+    # Conservation explicite du schéma final.
+    #
+    # L'ordre d'origine des colonnes est préservé afin de garder
+    # un dataset lisible et stable.
+    final_columns = [
+        column
+        for column in df_features.columns
+        if column in EXPECTED_OUTPUT_COLUMNS
+    ]
+
+    df_features = df_features[
+        final_columns
+    ].copy()
+
+    print(
+        f"Dataset de features : "
+        f"{len(df_features):,} observations × "
+        f"{df_features.shape[1]} variables"
+    )
+
+    return df_features
 
 
 # ---------------------------------------------------------------------
-# Contrôles qualité
+# Contrôles qualité du dataset final
 # ---------------------------------------------------------------------
 
 def validate_feature_dataset(
     df: pd.DataFrame,
 ) -> None:
     """
-    Vérifie que le dataset final respecte les décisions
-    de sélection établies dans le notebook 02.
+    Vérifie que le dataset final respecte le contrat de sortie
+    défini par le Feature Engineering.
     """
+
+    actual_columns = set(df.columns)
 
     quality_checks = {
         "Variable cible présente":
-            TARGET_COLUMN in df.columns,
+            TARGET_COLUMN in actual_columns,
 
         "Noms de colonnes uniques":
             df.columns.is_unique,
 
         "Toutes les variables exclues sont absentes":
             COLUMNS_TO_EXCLUDE.isdisjoint(
-                df.columns
+                actual_columns
             ),
 
         "Feature mois sinus présente":
             "registration_month_sin"
-            in df.columns,
+            in actual_columns,
 
         "Feature mois cosinus présente":
             "registration_month_cos"
-            in df.columns,
+            in actual_columns,
 
         "Features temporelles sans valeur manquante":
             not df[
@@ -281,6 +408,14 @@ def validate_feature_dataset(
             .isna()
             .any()
             .any(),
+
+        "Schéma final conforme":
+            actual_columns
+            == EXPECTED_OUTPUT_COLUMNS,
+
+        "Nombre final de variables conforme":
+            df.shape[1]
+            == len(EXPECTED_OUTPUT_COLUMNS),
     }
 
     failed_checks = []
@@ -293,10 +428,39 @@ def validate_feature_dataset(
             failed_checks.append(check)
 
     if failed_checks:
-        raise ValueError(
+        missing_columns = sorted(
+            EXPECTED_OUTPUT_COLUMNS
+            - actual_columns
+        )
+
+        unexpected_columns = sorted(
+            actual_columns
+            - EXPECTED_OUTPUT_COLUMNS
+        )
+
+        details = []
+
+        if missing_columns:
+            details.append(
+                "variables manquantes : "
+                + ", ".join(missing_columns)
+            )
+
+        if unexpected_columns:
+            details.append(
+                "variables inattendues : "
+                + ", ".join(unexpected_columns)
+            )
+
+        message = (
             "Contrôles qualité échoués : "
             + ", ".join(failed_checks)
         )
+
+        if details:
+            message += " | " + " | ".join(details)
+
+        raise ValueError(message)
 
     print("✅ Dataset de features validé.")
 
@@ -310,7 +474,7 @@ def save_features(
     output_path: Path,
 ) -> None:
     """
-    Exporte le dataset produit par le Feature Engineering.
+    Exporte le dataset final de Feature Engineering.
     """
 
     output_path.parent.mkdir(
@@ -351,16 +515,18 @@ def build_features(
 
     df = add_temporal_features(df)
 
-    df = select_features(df)
+    df_features = select_features(df)
 
-    validate_feature_dataset(df)
+    validate_feature_dataset(
+        df_features
+    )
 
     save_features(
-        df=df,
+        df=df_features,
         output_path=output_path,
     )
 
-    return df
+    return df_features
 
 
 # ---------------------------------------------------------------------
