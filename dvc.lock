@@ -26,10 +26,10 @@ stages:
       size: 2510339919
     - path: src/vehicle_emissions/features/build_features.py
       hash: md5
-      md5: 41f5546575dd4a5d855a3fbe16adf9f1
-      size: 10697
+      md5: c0bb78fcba55bf70d45019483fc096b5
+      size: 15389
     outs:
     - path: data/interim/data_2024_features.csv
       hash: md5
-      md5: 12033278efa6e31c1cbe5ae66e4fba5d
-      size: 1344788979
+      md5: 34d520b15bd788b6eb8b731bdd4658f9
+      size: 1024703830
