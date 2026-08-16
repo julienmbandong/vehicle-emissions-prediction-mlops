@@ -33,3 +33,52 @@ stages:
       hash: md5
       md5: 34d520b15bd788b6eb8b731bdd4658f9
       size: 1024703830
+  train_test_preprocessing:
+    cmd: python -m vehicle_emissions.preprocessing.train_test_preprocessing 
+      --full
+    deps:
+    - path: data/interim/data_2024_features.csv
+      hash: md5
+      md5: 34d520b15bd788b6eb8b731bdd4658f9
+      size: 1024703830
+    - path: src/vehicle_emissions/preprocessing/train_test_preprocessing.py
+      hash: md5
+      md5: 38270530ef782daf70ba9920917b8126
+      size: 38007
+    outs:
+    - path: data/processed/X_test_processed.parquet
+      hash: md5
+      md5: f6ec545f5112c443be488441abf9d156
+      size: 38188098
+    - path: data/processed/X_train_processed.parquet
+      hash: md5
+      md5: 2c6996a4b7888c48a198e03d4cbcc5e2
+      size: 152257662
+    - path: data/processed/y_test.parquet
+      hash: md5
+      md5: 151b449ff38dd0ee1399e91ee63dbe6e
+      size: 14343896
+    - path: data/processed/y_train.parquet
+      hash: md5
+      md5: b149843451bb5c25ab4d7a28905b039c
+      size: 57209276
+    - path: models/preprocessing/imputation_values.joblib
+      hash: md5
+      md5: 2d5c02eea1d95a3cb1ecfc9b21e6164b
+      size: 304
+    - path: models/preprocessing/manufacturer_frequency_map.joblib
+      hash: md5
+      md5: 21690545301317625d0383d0cb3c1487
+      size: 18693
+    - path: models/preprocessing/onehot_encoder.joblib
+      hash: md5
+      md5: 1bc80b5ffa82fa270dbfb69cbb85508f
+      size: 1582
+    - path: models/preprocessing/preprocessing_metadata.json
+      hash: md5
+      md5: 64a8c8e325246675e8015b27e1e56269
+      size: 3951
+    - path: models/preprocessing/standard_scaler.joblib
+      hash: md5
+      md5: a6dc46a5e4b17ba21ee3695737237cf4
+      size: 1343

@@ -18,3 +18,22 @@ stages:
 
     outs:
       - data/interim/data_2024_features.csv
+
+
+  train_test_preprocessing:
+    cmd: python -m vehicle_emissions.preprocessing.train_test_preprocessing --full
+
+    deps:
+      - src/vehicle_emissions/preprocessing/train_test_preprocessing.py
+      - data/interim/data_2024_features.csv
+
+    outs:
+      - data/processed/X_train_processed.parquet
+      - data/processed/X_test_processed.parquet
+      - data/processed/y_train.parquet
+      - data/processed/y_test.parquet
+      - models/preprocessing/manufacturer_frequency_map.joblib
+      - models/preprocessing/imputation_values.joblib
+      - models/preprocessing/onehot_encoder.joblib
+      - models/preprocessing/standard_scaler.joblib
+      - models/preprocessing/preprocessing_metadata.json
