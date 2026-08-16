@@ -153,6 +153,7 @@ ONEHOT_COLUMNS = [
 # ---------------------------------------------------------------------
 
 RARE_MEDIAN_COLUMNS = [
+    "mass_running_order_kg",
     "wltp_test_mass_kg",
     "engine_power_kw",
 ]
