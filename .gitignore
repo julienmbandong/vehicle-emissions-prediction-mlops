@@ -49,8 +49,17 @@ env/
 # Les fichiers .dvc et les .gitignore générés par DVC
 # doivent rester versionnés avec Git.
 
+# Conserver les fichiers .gitkeep nécessaires
+# à la structure vide des répertoires.
 !data/raw/.gitkeep
 !data/interim/.gitkeep
+!data/processed/.gitkeep
+
+# Ignorer les datasets générés par le preprocessing.
+# Ils ne doivent pas être versionnés directement avec Git.
+data/processed/*
+
+# Réinclure explicitement le .gitkeep après la règle précédente.
 !data/processed/.gitkeep
 
 
@@ -59,8 +68,22 @@ env/
 # Gérés par MLflow / DVC
 # ==================================================
 
+# Conserver les fichiers .gitkeep de structure.
 !models/trained/.gitkeep
 !models/experiments/.gitkeep
+!models/preprocessing/.gitkeep
+
+# Ignorer les artefacts générés par le preprocessing :
+# - Frequency Encoding
+# - valeurs d'imputation
+# - OneHotEncoder
+# - StandardScaler
+# - métadonnées JSON
+# - artefacts du mode TEST
+models/preprocessing/*
+
+# Réinclure explicitement le .gitkeep.
+!models/preprocessing/.gitkeep
 
 
 # ==================================================
