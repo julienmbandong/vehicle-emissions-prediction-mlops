@@ -68,6 +68,9 @@ data/processed/*
 # Gérés par MLflow / DVC
 # ==================================================
 
+# Artefacts temporaires générés en mode TEST
+models/trained/test/
+
 # Conserver les fichiers .gitkeep de structure.
 !models/trained/.gitkeep
 !models/experiments/.gitkeep

@@ -1,0 +1,30 @@
+{
+    "model_selected": "RandomForestRegressor",
+    "target": "co2_wltp_g_km",
+    "train_full": {
+        "observations": 8606547,
+        "features": 41
+    },
+    "test_final": {
+        "observations": 2151637,
+        "features": 41
+    },
+    "tuning": {
+        "train_observations": 400000,
+        "validation_observations": 100000,
+        "cv_folds": 3,
+        "scoring": "neg_mean_absolute_error"
+    },
+    "best_random_forest_params": {
+        "n_estimators": 100,
+        "min_samples_split": 5,
+        "min_samples_leaf": 1,
+        "max_features": 1.0,
+        "max_depth": 25
+    },
+    "final_test_metrics": {
+        "mae": 0.4377571465751273,
+        "rmse": 3.1089564870594644,
+        "r2": 0.9971147676012297
+    }
+}
