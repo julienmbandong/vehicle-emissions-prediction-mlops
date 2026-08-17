@@ -37,3 +37,19 @@ stages:
       - models/preprocessing/onehot_encoder.joblib
       - models/preprocessing/standard_scaler.joblib
       - models/preprocessing/preprocessing_metadata.json
+  
+  
+  train_regression_model:
+    cmd: python -m vehicle_emissions.training.train_regression_model --full
+
+    deps:
+      - src/vehicle_emissions/training/train_regression_model.py
+      - models/metadata/random_forest_regression_metadata.json
+      - data/processed/X_train_processed.parquet
+      - data/processed/X_test_processed.parquet
+      - data/processed/y_train.parquet
+      - data/processed/y_test.parquet
+
+    outs:
+      - models/trained/random_forest_regressor.joblib
+      - models/trained/random_forest_regressor_training_metadata.json
