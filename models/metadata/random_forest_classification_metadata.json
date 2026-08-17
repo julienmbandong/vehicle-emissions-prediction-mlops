@@ -1,0 +1,67 @@
+{
+    "problem_type": "multiclass_classification",
+    "model_selected": "RandomForestClassifier",
+    "target_original": "co2_wltp_g_km",
+    "target_classification": "co2_emission_class",
+    "classes": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E",
+        "F",
+        "G"
+    ],
+    "class_intervals_g_co2_km": {
+        "A": "≤ 100",
+        "B": "]100 ; 120]",
+        "C": "]120 ; 140]",
+        "D": "]140 ; 160]",
+        "E": "]160 ; 200]",
+        "F": "]200 ; 250]",
+        "G": "> 250"
+    },
+    "class_business_labels": {
+        "A": "Très faibles émissions",
+        "B": "Faibles émissions",
+        "C": "Émissions modérées",
+        "D": "Émissions intermédiaires",
+        "E": "Émissions élevées",
+        "F": "Très fortes émissions",
+        "G": "Émissions extrêmement élevées"
+    },
+    "classification_bins": [
+        "-inf",
+        100,
+        120,
+        140,
+        160,
+        200,
+        250,
+        "inf"
+    ],
+    "selection_metric": "f1_macro",
+    "best_random_forest_params": {
+        "n_estimators": 100,
+        "min_samples_split": 2,
+        "min_samples_leaf": 1,
+        "max_features": 0.5,
+        "max_depth": 20,
+        "random_state": 42,
+        "n_jobs": -1
+    },
+    "train_full": {
+        "observations": 8606547,
+        "features": 41
+    },
+    "test_final": {
+        "observations": 2151637,
+        "features": 41
+    },
+    "validation": {
+        "observations": 100000,
+        "f1_macro_reference": 0.9848592836409262,
+        "f1_macro_optimized": 0.9854533380418005,
+        "f1_macro_gain": 0.0005940544008742332
+    }
+}
