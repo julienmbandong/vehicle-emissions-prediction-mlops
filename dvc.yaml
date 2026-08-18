@@ -55,17 +55,17 @@ stages:
       - models/trained/random_forest_regressor_training_metadata.json
   
 
-    train_classification_model:
-      cmd: python -m vehicle_emissions.training.train_classification_model --full
+  train_classification_model:
+    cmd: python -m vehicle_emissions.training.train_classification_model --full
 
-      deps:
-        - src/vehicle_emissions/training/train_classification_model.py
-        - models/metadata/random_forest_classification_metadata.json
-        - data/processed/X_train_processed.parquet
-        - data/processed/X_test_processed.parquet
-        - data/processed/y_train.parquet
-        - data/processed/y_test.parquet
+    deps:
+      - src/vehicle_emissions/training/train_classification_model.py
+      - models/metadata/random_forest_classification_metadata.json
+      - data/processed/X_train_processed.parquet
+      - data/processed/X_test_processed.parquet
+      - data/processed/y_train.parquet
+      - data/processed/y_test.parquet
 
-      outs:
-        - models/trained/random_forest_classifier.joblib
-        - models/trained/random_forest_classifier_training_metadata.json
+    outs:
+      - models/trained/random_forest_classifier.joblib
+      - models/trained/random_forest_classifier_training_metadata.json
