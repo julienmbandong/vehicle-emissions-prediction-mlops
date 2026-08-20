@@ -10,13 +10,13 @@ stages:
       isexec: true
     - path: src/vehicle_emissions/preprocessing/clean_data.py
       hash: md5
-      md5: b185268672cac791b88b4003cb3bcde1
-      size: 10608
+      md5: 9da689730ea90310f039f21762aaf30d
+      size: 24824
     outs:
     - path: data/processed/data_2024_cleaned.csv
       hash: md5
-      md5: c432b6b9d0fc02cb41e148f2d44ab836
-      size: 2510339919
+      md5: 8a3ba532f735b4a408c1335cdc7a408f
+      size: 2508462960
   feature_engineering:
     cmd: python -m vehicle_emissions.features.build_features --full
     deps:
