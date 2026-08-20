@@ -67,7 +67,8 @@ REQUIRED_COLUMNS = {
 # Variables à exclure
 # ---------------------------------------------------------------------
 #
-# Cette liste reprend les décisions finales du notebook 02.
+# Cette liste reprend les décisions de sélection du notebook 02
+# à l'issue du Feature Engineering.
 #
 # Ces colonnes sont supprimées lorsqu'elles sont présentes dans le dataset.
 # Leur absence à l'entrée n'empêche donc pas le pipeline de fonctionner.
@@ -114,7 +115,7 @@ COLUMNS_TO_EXCLUDE = {
 
 
 # ---------------------------------------------------------------------
-# Schéma final attendu
+# Schéma attendu à l'issue du Feature Engineering
 # ---------------------------------------------------------------------
 #
 # Ce schéma constitue le contrat de sortie du Feature Engineering.
@@ -125,6 +126,10 @@ COLUMNS_TO_EXCLUDE = {
 # - 1 variable cible.
 #
 # Total attendu : 15 variables.
+#
+# Les variables explicatives conservées à cette étape restent des variables
+# candidates. Leur sélection définitive pour l'apprentissage sera réalisée
+# lors de l'étape de preprocessing Machine Learning.
 # ---------------------------------------------------------------------
 
 EXPECTED_OUTPUT_COLUMNS = {
@@ -213,7 +218,7 @@ def validate_input_schema(
     Vérifie la conformité minimale du dataset d'entrée.
 
     Les contrôles portent uniquement sur les variables nécessaires
-    au Feature Engineering et au dataset final.
+    au Feature Engineering et au dataset attendu en sortie.
     """
 
     missing_columns = sorted(
@@ -301,20 +306,25 @@ def add_temporal_features(
 
 
 # ---------------------------------------------------------------------
-# Sélection finale des variables
+# Sélection des variables à l'issue du Feature Engineering
 # ---------------------------------------------------------------------
 
 def select_features(
     df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Applique les décisions finales de sélection établies
+    Applique les décisions de sélection établies
     dans le notebook 02 de Feature Engineering.
 
     Les colonnes définies dans COLUMNS_TO_EXCLUDE sont supprimées
     lorsqu'elles sont présentes.
 
-    Le dataset est ensuite limité explicitement au schéma final attendu.
+    Le dataset est ensuite limité explicitement au schéma attendu
+    à l'issue du Feature Engineering.
+
+    Les variables conservées restent des variables candidates pour
+    la suite du pipeline. Leur sélection définitive pour l'apprentissage
+    sera réalisée lors de l'étape de preprocessing Machine Learning.
     """
 
     columns_present_to_exclude = sorted(
@@ -340,11 +350,12 @@ def select_features(
 
     if missing_expected_columns:
         raise ValueError(
-            "Variables attendues dans le dataset final absentes : "
+            "Variables attendues dans le dataset "
+            "de Feature Engineering absentes : "
             + ", ".join(missing_expected_columns)
         )
 
-    # Conservation explicite du schéma final.
+    # Conservation explicite du schéma attendu.
     #
     # L'ordre d'origine des colonnes est préservé afin de garder
     # un dataset lisible et stable.
@@ -368,15 +379,17 @@ def select_features(
 
 
 # ---------------------------------------------------------------------
-# Contrôles qualité du dataset final
+# Contrôles qualité du dataset de features
 # ---------------------------------------------------------------------
 
 def validate_feature_dataset(
     df: pd.DataFrame,
 ) -> None:
     """
-    Vérifie que le dataset final respecte le contrat de sortie
-    défini par le Feature Engineering.
+    Vérifie que le dataset respecte le contrat de sortie
+    défini à l'issue du Feature Engineering.
+
+    Ces contrôles ne réalisent aucune nouvelle sélection de variables.
     """
 
     actual_columns = set(df.columns)
@@ -409,11 +422,11 @@ def validate_feature_dataset(
             .any()
             .any(),
 
-        "Schéma final conforme":
+        "Schéma de Feature Engineering conforme":
             actual_columns
             == EXPECTED_OUTPUT_COLUMNS,
 
-        "Nombre final de variables conforme":
+        "Nombre de variables conforme":
             df.shape[1]
             == len(EXPECTED_OUTPUT_COLUMNS),
     }
@@ -474,7 +487,7 @@ def save_features(
     output_path: Path,
 ) -> None:
     """
-    Exporte le dataset final de Feature Engineering.
+    Exporte le dataset issu du Feature Engineering.
     """
 
     output_path.parent.mkdir(
