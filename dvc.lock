@@ -22,17 +22,17 @@ stages:
     deps:
     - path: data/processed/data_2024_cleaned.csv
       hash: md5
-      md5: c432b6b9d0fc02cb41e148f2d44ab836
-      size: 2510339919
+      md5: 8a3ba532f735b4a408c1335cdc7a408f
+      size: 2508462960
     - path: src/vehicle_emissions/features/build_features.py
       hash: md5
-      md5: c0bb78fcba55bf70d45019483fc096b5
-      size: 15389
+      md5: f99dba670bcb8fb18617a4604738e1e3
+      size: 16078
     outs:
     - path: data/interim/data_2024_features.csv
       hash: md5
-      md5: 34d520b15bd788b6eb8b731bdd4658f9
-      size: 1024703830
+      md5: c5906b6585c3fd87c6b0331503127e38
+      size: 1022826871
   train_test_preprocessing:
     cmd: python -m vehicle_emissions.preprocessing.train_test_preprocessing 
       --full
