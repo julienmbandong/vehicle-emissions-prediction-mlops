@@ -9,7 +9,8 @@ Principes :
 - manufacturer_make est exclue de la modélisation ;
 - les paramètres dépendant des données sont appris uniquement sur Train ;
 - les mêmes paramètres sont appliqués à Test sans réapprentissage ;
-- les artefacts nécessaires à l'inférence sont sauvegardés.
+- la gestion des NaN est robuste et indépendante de l'échantillon ;
+- les artefacts nécessaires à l'inférence sont sauvegardés et validés.
 
 Modes :
     --test : 100 000 premières observations
@@ -25,12 +26,13 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
+from pandas.api.types import is_numeric_dtype
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 
 # =====================================================================
-# Configuration
+# Configuration générale
 # =====================================================================
 
 TARGET_COLUMN = "co2_wltp_g_km"
@@ -43,10 +45,13 @@ EXCLUDED_FEATURES = [
     "manufacturer_make",
 ]
 
-MODEL_FEATURE_COLUMNS = [
+CATEGORICAL_FEATURE_COLUMNS = [
     "vehicle_category_type",
     "fuel_type",
     "fuel_mode",
+]
+
+NUMERIC_FEATURE_COLUMNS = [
     "mass_running_order_kg",
     "wltp_test_mass_kg",
     "engine_capacity_cm3",
@@ -58,6 +63,11 @@ MODEL_FEATURE_COLUMNS = [
     "registration_month_sin",
     "registration_month_cos",
 ]
+
+MODEL_FEATURE_COLUMNS = (
+    CATEGORICAL_FEATURE_COLUMNS
+    + NUMERIC_FEATURE_COLUMNS
+)
 
 REQUIRED_COLUMNS = set(
     MODEL_FEATURE_COLUMNS
@@ -95,15 +105,22 @@ FUEL_CONSUMING_TYPES = {
     "petrol/electric",
 }
 
-CATEGORICAL_IMPUTATION_COLUMNS = [
-    "vehicle_category_type",
-    "fuel_mode",
-]
+CONDITIONAL_IMPUTATION_RULES = {
+    "engine_capacity_cm3":
+        THERMAL_ENGINE_FUEL_TYPES,
 
-ONEHOT_COLUMNS = [
-    "vehicle_category_type",
-    "fuel_type",
-    "fuel_mode",
+    "electric_energy_consumption_wh_km":
+        ELECTRIC_FUEL_TYPES,
+
+    "electric_range_km":
+        ELECTRIC_FUEL_TYPES,
+
+    "fuel_consumption":
+        FUEL_CONSUMING_TYPES,
+}
+
+INFORMATIVE_ZERO_COLUMNS = [
+    "co2_reduction_wltp_g_km",
 ]
 
 INDICATOR_COLUMNS = {
@@ -120,37 +137,29 @@ INDICATOR_COLUMNS = {
         "has_co2_reduction_wltp_g_km",
 }
 
-RARE_MEDIAN_COLUMNS = [
-    "wltp_test_mass_kg",
-    "engine_power_kw",
+ONEHOT_COLUMNS = list(
+    CATEGORICAL_FEATURE_COLUMNS
+)
+
+GENERAL_NUMERIC_IMPUTATION_COLUMNS = [
+    column
+    for column in NUMERIC_FEATURE_COLUMNS
+    if (
+        column not in CONDITIONAL_IMPUTATION_RULES
+        and column not in INFORMATIVE_ZERO_COLUMNS
+    )
 ]
-
-CONDITIONAL_IMPUTATION_RULES = {
-    "engine_capacity_cm3":
-        THERMAL_ENGINE_FUEL_TYPES,
-
-    "electric_energy_consumption_wh_km":
-        ELECTRIC_FUEL_TYPES,
-
-    "electric_range_km":
-        ELECTRIC_FUEL_TYPES,
-
-    "fuel_consumption":
-        FUEL_CONSUMING_TYPES,
-}
 
 
 # =====================================================================
-# Chargement
+# Chargement et validation du schéma
 # =====================================================================
 
 def load_data(
     input_path: Path,
     nrows: int | None = None,
 ) -> pd.DataFrame:
-    """
-    Charge le dataset issu du Feature Engineering.
-    """
+    """Charge le dataset issu du Feature Engineering."""
 
     if not input_path.is_file():
         raise FileNotFoundError(
@@ -174,16 +183,10 @@ def load_data(
     return df
 
 
-# =====================================================================
-# Validation du schéma d'entrée
-# =====================================================================
-
 def validate_input_schema(
     df: pd.DataFrame,
 ) -> None:
-    """
-    Vérifie la conformité minimale du dataset d'entrée.
-    """
+    """Vérifie la conformité du dataset d'entrée."""
 
     missing_columns = sorted(
         REQUIRED_COLUMNS - set(df.columns)
@@ -200,9 +203,34 @@ def validate_input_schema(
             "Les noms de colonnes ne sont pas uniques."
         )
 
+    non_numeric_columns = [
+        column
+        for column in (
+            NUMERIC_FEATURE_COLUMNS
+            + [TARGET_COLUMN]
+        )
+        if not is_numeric_dtype(df[column])
+    ]
+
+    if non_numeric_columns:
+        raise TypeError(
+            "Les variables suivantes devraient être numériques : "
+            + ", ".join(non_numeric_columns)
+        )
+
     if df[TARGET_COLUMN].isna().any():
         raise ValueError(
             f"La cible '{TARGET_COLUMN}' contient des NaN."
+        )
+
+    target_values = df[
+        TARGET_COLUMN
+    ].to_numpy()
+
+    if not np.isfinite(target_values).all():
+        raise ValueError(
+            f"La cible '{TARGET_COLUMN}' contient "
+            "des valeurs infinies."
         )
 
     print("✅ Schéma d'entrée valide.")
@@ -220,12 +248,15 @@ def split_train_test(
     pd.Series,
     pd.Series,
 ]:
-    """
-    Construit X, y puis les jeux Train / Test.
-    """
+    """Construit X, y puis les jeux Train / Test."""
 
-    X = df[MODEL_FEATURE_COLUMNS].copy()
-    y = df[TARGET_COLUMN].copy()
+    X = df[
+        MODEL_FEATURE_COLUMNS
+    ].copy()
+
+    y = df[
+        TARGET_COLUMN
+    ].copy()
 
     if TARGET_COLUMN in X.columns:
         raise ValueError(
@@ -302,7 +333,7 @@ def split_train_test(
 
 
 # =====================================================================
-# Imputation catégorielle
+# Imputation catégorielle robuste
 # =====================================================================
 
 def impute_categorical_features(
@@ -314,8 +345,11 @@ def impute_categorical_features(
     dict[str, str],
 ]:
     """
-    Impute les NaN catégoriels par la modalité la plus fréquente
-    apprise exclusivement sur Train.
+    Impute toutes les variables catégorielles par leur modalité Train.
+
+    La modalité est apprise pour chaque variable catégorielle, même si
+    aucun NaN n'est présent dans l'échantillon courant. Elle est ainsi
+    disponible pour l'inférence future.
     """
 
     X_train = X_train.copy()
@@ -324,10 +358,10 @@ def impute_categorical_features(
     imputation_values: dict[str, str] = {}
 
     print(
-        "\n=== Imputation des valeurs manquantes catégorielles ==="
+        "\n=== Traitement des valeurs manquantes catégorielles ==="
     )
 
-    for column in CATEGORICAL_IMPUTATION_COLUMNS:
+    for column in CATEGORICAL_FEATURE_COLUMNS:
 
         train_mode = (
             X_train[column]
@@ -336,8 +370,9 @@ def impute_categorical_features(
 
         if train_mode.empty:
             raise ValueError(
-                f"Impossible de déterminer la modalité "
-                f"d'imputation pour '{column}'."
+                f"La variable catégorielle '{column}' est entièrement "
+                "manquante dans X_train. "
+                "Aucune modalité d'imputation ne peut être apprise."
             )
 
         mode_value = str(
@@ -356,7 +391,9 @@ def impute_categorical_features(
             .sum()
         )
 
-        imputation_values[column] = mode_value
+        imputation_values[
+            column
+        ] = mode_value
 
         X_train[column] = (
             X_train[column]
@@ -375,68 +412,53 @@ def impute_categorical_features(
             f"NaN Test={test_missing:,}"
         )
 
+    train_nan_report = (
+        X_train[
+            CATEGORICAL_FEATURE_COLUMNS
+        ]
+        .isna()
+        .sum()
+    )
+
+    test_nan_report = (
+        X_test[
+            CATEGORICAL_FEATURE_COLUMNS
+        ]
+        .isna()
+        .sum()
+    )
+
+    train_nan_report = (
+        train_nan_report[
+            train_nan_report > 0
+        ]
+    )
+
+    test_nan_report = (
+        test_nan_report[
+            test_nan_report > 0
+        ]
+    )
+
+    if (
+        not train_nan_report.empty
+        or not test_nan_report.empty
+    ):
+        raise ValueError(
+            "Des NaN catégoriels subsistent après imputation.\n"
+            f"Train : {train_nan_report.to_dict()}\n"
+            f"Test : {test_nan_report.to_dict()}"
+        )
+
+    print(
+        "✅ Toutes les valeurs manquantes catégorielles "
+        "ont été traitées."
+    )
+
     return (
         X_train,
         X_test,
         imputation_values,
-    )
-
-
-# =====================================================================
-# Validation catégorielle
-# =====================================================================
-
-def validate_categorical_features(
-    X_train: pd.DataFrame,
-    X_test: pd.DataFrame,
-) -> None:
-    """
-    Vérifie que les variables catégorielles nécessaires
-    au One-Hot Encoding existent et ne contiennent plus de NaN.
-    """
-
-    missing_train = [
-        column
-        for column in ONEHOT_COLUMNS
-        if column not in X_train.columns
-    ]
-
-    missing_test = [
-        column
-        for column in ONEHOT_COLUMNS
-        if column not in X_test.columns
-    ]
-
-    if missing_train or missing_test:
-        raise ValueError(
-            "Variables catégorielles absentes.\n"
-            f"Train : {missing_train}\n"
-            f"Test : {missing_test}"
-        )
-
-    train_nan = [
-        column
-        for column in ONEHOT_COLUMNS
-        if X_train[column].isna().any()
-    ]
-
-    test_nan = [
-        column
-        for column in ONEHOT_COLUMNS
-        if X_test[column].isna().any()
-    ]
-
-    if train_nan or test_nan:
-        raise ValueError(
-            "Des valeurs manquantes subsistent dans les variables "
-            "catégorielles.\n"
-            f"Train : {train_nan}\n"
-            f"Test : {test_nan}"
-        )
-
-    print(
-        "✅ Variables catégorielles conformes : "
-        "3 variables nominales prêtes pour l'encodage."
     )
 
 
@@ -465,14 +487,22 @@ def add_missing_indicators(
         INDICATOR_COLUMNS.items()
     ):
 
-        X_train[indicator_column] = (
-            X_train[source_column]
+        X_train[
+            indicator_column
+        ] = (
+            X_train[
+                source_column
+            ]
             .notna()
             .astype("int8")
         )
 
-        X_test[indicator_column] = (
-            X_test[source_column]
+        X_test[
+            indicator_column
+        ] = (
+            X_test[
+                source_column
+            ]
             .notna()
             .astype("int8")
         )
@@ -489,7 +519,7 @@ def add_missing_indicators(
 
 
 # =====================================================================
-# Imputation conditionnelle numérique
+# Imputation conditionnelle métier
 # =====================================================================
 
 def apply_conditional_imputation(
@@ -502,10 +532,10 @@ def apply_conditional_imputation(
     dict[str, int],
 ]:
     """
-    Traite une variable numérique comportant :
+    Applique la règle métier d'une variable numérique.
 
-    - des NaN structurels -> 0 ;
-    - des NaN résiduels -> médiane apprise sur Train.
+    - NaN structurel : 0 ;
+    - NaN résiduel : médiane apprise exclusivement sur Train.
     """
 
     train_applicable = (
@@ -538,11 +568,13 @@ def apply_conditional_imputation(
         & X_test[column].isna()
     )
 
-    train_reference_values = X_train.loc[
-        train_applicable
-        & X_train[column].notna(),
-        column,
-    ]
+    train_reference_values = (
+        X_train.loc[
+            train_applicable,
+            column,
+        ]
+        .dropna()
+    )
 
     if train_reference_values.empty:
         raise ValueError(
@@ -553,6 +585,14 @@ def apply_conditional_imputation(
     median_train = float(
         train_reference_values.median()
     )
+
+    if not np.isfinite(
+        median_train
+    ):
+        raise ValueError(
+            f"Médiane invalide calculée pour '{column}' : "
+            f"{median_train}"
+        )
 
     X_train.loc[
         train_structural_nan,
@@ -576,16 +616,24 @@ def apply_conditional_imputation(
 
     report = {
         "train_structural_nan":
-            int(train_structural_nan.sum()),
+            int(
+                train_structural_nan.sum()
+            ),
 
         "train_residual_nan":
-            int(train_residual_nan.sum()),
+            int(
+                train_residual_nan.sum()
+            ),
 
         "test_structural_nan":
-            int(test_structural_nan.sum()),
+            int(
+                test_structural_nan.sum()
+            ),
 
         "test_residual_nan":
-            int(test_residual_nan.sum()),
+            int(
+                test_residual_nan.sum()
+            ),
     }
 
     return (
@@ -595,7 +643,7 @@ def apply_conditional_imputation(
 
 
 # =====================================================================
-# Traitement des NaN numériques
+# Imputation numérique robuste
 # =====================================================================
 
 def impute_numeric_features(
@@ -607,7 +655,17 @@ def impute_numeric_features(
     dict[str, float],
 ]:
     """
-    Applique les règles métier numériques validées.
+    Traite toutes les valeurs manquantes numériques.
+
+    Ordre :
+    1. règles métier conditionnelles ;
+    2. absences informatives -> 0 ;
+    3. médiane Train pour toutes les autres variables numériques ;
+    4. validation stricte : aucun NaN numérique ne doit subsister.
+
+    Les médianes des variables générales sont apprises même si elles ne
+    contiennent aucun NaN dans l'échantillon courant. Elles restent ainsi
+    disponibles pour l'inférence future.
     """
 
     X_train = X_train.copy()
@@ -619,9 +677,12 @@ def impute_numeric_features(
         "\n=== Traitement des valeurs manquantes numériques ==="
     )
 
+    # -----------------------------------------------------------------
+    # 1. Règles métier conditionnelles
+    # -----------------------------------------------------------------
+
     print(
-        "\nTraitement conditionnel "
-        "(NaN structurels -> 0 ; NaN résiduels -> médiane Train) :"
+        "\nTraitement conditionnel métier :"
     )
 
     for column, applicable_types in (
@@ -637,7 +698,9 @@ def impute_numeric_features(
             )
         )
 
-        imputation_values[column] = median_train
+        imputation_values[
+            column
+        ] = median_train
 
         print(
             f"  - {column}: "
@@ -653,74 +716,76 @@ def impute_numeric_features(
         )
 
     # -----------------------------------------------------------------
-    # co2_reduction_wltp_g_km : absence informative -> 0
-    # -----------------------------------------------------------------
-
-    co2_reduction_column = (
-        "co2_reduction_wltp_g_km"
-    )
-
-    train_co2_missing = int(
-        X_train[
-            co2_reduction_column
-        ]
-        .isna()
-        .sum()
-    )
-
-    test_co2_missing = int(
-        X_test[
-            co2_reduction_column
-        ]
-        .isna()
-        .sum()
-    )
-
-    X_train[
-        co2_reduction_column
-    ] = (
-        X_train[
-            co2_reduction_column
-        ]
-        .fillna(0.0)
-    )
-
-    X_test[
-        co2_reduction_column
-    ] = (
-        X_test[
-            co2_reduction_column
-        ]
-        .fillna(0.0)
-    )
-
-    print(
-        f"\n  - {co2_reduction_column}: "
-        f"absence informative -> 0 | "
-        f"Train={train_co2_missing:,} | "
-        f"Test={test_co2_missing:,}"
-    )
-
-    # -----------------------------------------------------------------
-    # NaN rares -> médiane Train
+    # 2. Absences informatives -> 0
     # -----------------------------------------------------------------
 
     print(
-        "\nImputation des NaN résiduels rares "
-        "par médiane apprise sur Train :"
+        "\nTraitement des absences informatives :"
     )
 
-    for column in RARE_MEDIAN_COLUMNS:
+    for column in INFORMATIVE_ZERO_COLUMNS:
 
-        median_train = float(
+        train_missing = int(
             X_train[column]
-            .median()
+            .isna()
+            .sum()
         )
 
-        if pd.isna(median_train):
+        test_missing = int(
+            X_test[column]
+            .isna()
+            .sum()
+        )
+
+        X_train[column] = (
+            X_train[column]
+            .fillna(0.0)
+        )
+
+        X_test[column] = (
+            X_test[column]
+            .fillna(0.0)
+        )
+
+        print(
+            f"  - {column}: "
+            f"NaN -> 0 | "
+            f"Train={train_missing:,} | "
+            f"Test={test_missing:,}"
+        )
+
+    # -----------------------------------------------------------------
+    # 3. Variables numériques générales -> médiane Train
+    # -----------------------------------------------------------------
+
+    print(
+        "\nImputation générale par médiane apprise sur Train :"
+    )
+
+    for column in GENERAL_NUMERIC_IMPUTATION_COLUMNS:
+
+        train_valid_values = (
+            X_train[column]
+            .dropna()
+        )
+
+        if train_valid_values.empty:
             raise ValueError(
-                f"Impossible de calculer "
-                f"la médiane de '{column}'."
+                f"La variable numérique '{column}' est entièrement "
+                "manquante dans X_train. "
+                "Aucune médiane ne peut être apprise."
+            )
+
+        median_train = float(
+            train_valid_values.median()
+        )
+
+        if not np.isfinite(
+            median_train
+        ):
+            raise ValueError(
+                f"Médiane invalide calculée pour '{column}' : "
+                f"{median_train}"
             )
 
         train_missing = int(
@@ -735,7 +800,9 @@ def impute_numeric_features(
             .sum()
         )
 
-        imputation_values[column] = median_train
+        imputation_values[
+            column
+        ] = median_train
 
         X_train[column] = (
             X_train[column]
@@ -754,33 +821,140 @@ def impute_numeric_features(
             f"NaN Test={test_missing:,}"
         )
 
-    remaining_train_nan = int(
+    # -----------------------------------------------------------------
+    # 4. Filet de sécurité dynamique
+    # -----------------------------------------------------------------
+
+    numeric_columns = (
+        X_train
+        .select_dtypes(
+            include="number"
+        )
+        .columns
+        .tolist()
+    )
+
+    residual_columns = [
+        column
+        for column in numeric_columns
+        if (
+            X_train[column]
+            .isna()
+            .any()
+            or X_test[column]
+            .isna()
+            .any()
+        )
+    ]
+
+    if residual_columns:
+
+        print(
+            "\nFilet de sécurité : "
+            "NaN numériques résiduels détectés."
+        )
+
+    for column in residual_columns:
+
+        train_valid_values = (
+            X_train[column]
+            .dropna()
+        )
+
+        if train_valid_values.empty:
+            raise ValueError(
+                f"La variable numérique '{column}' est entièrement "
+                "manquante dans X_train. "
+                "Aucune médiane ne peut être apprise."
+            )
+
+        median_train = float(
+            train_valid_values.median()
+        )
+
+        if not np.isfinite(
+            median_train
+        ):
+            raise ValueError(
+                f"Médiane invalide calculée pour '{column}' : "
+                f"{median_train}"
+            )
+
+        train_missing = int(
+            X_train[column]
+            .isna()
+            .sum()
+        )
+
+        test_missing = int(
+            X_test[column]
+            .isna()
+            .sum()
+        )
+
+        imputation_values[
+            column
+        ] = median_train
+
+        X_train[column] = (
+            X_train[column]
+            .fillna(median_train)
+        )
+
+        X_test[column] = (
+            X_test[column]
+            .fillna(median_train)
+        )
+
+        print(
+            f"  - {column}: "
+            f"médiane Train={median_train:.4f} | "
+            f"NaN Train={train_missing:,} | "
+            f"NaN Test={test_missing:,}"
+        )
+
+    # -----------------------------------------------------------------
+    # 5. Validation stricte
+    # -----------------------------------------------------------------
+
+    train_nan_report = (
         X_train
         .isna()
         .sum()
-        .sum()
     )
 
-    remaining_test_nan = int(
+    test_nan_report = (
         X_test
         .isna()
         .sum()
-        .sum()
+    )
+
+    train_nan_report = (
+        train_nan_report[
+            train_nan_report > 0
+        ]
+    )
+
+    test_nan_report = (
+        test_nan_report[
+            test_nan_report > 0
+        ]
     )
 
     if (
-        remaining_train_nan != 0
-        or remaining_test_nan != 0
+        not train_nan_report.empty
+        or not test_nan_report.empty
     ):
         raise ValueError(
             "Des valeurs manquantes subsistent après "
-            "le preprocessing numérique : "
-            f"Train={remaining_train_nan}, "
-            f"Test={remaining_test_nan}."
+            "le preprocessing numérique.\n"
+            f"Train : {train_nan_report.to_dict()}\n"
+            f"Test : {test_nan_report.to_dict()}"
         )
 
     print(
-        "\n✅ Traitement numérique des valeurs manquantes terminé."
+        "\n✅ Toutes les valeurs manquantes numériques "
+        "ont été traitées."
     )
 
     return (
@@ -804,7 +978,8 @@ def onehot_encode_categories(
     list[str],
 ]:
     """
-    Apprend le OneHotEncoder sur Train puis transforme Train et Test.
+    Apprend le OneHotEncoder exclusivement sur Train,
+    puis transforme Train et Test.
     """
 
     encoder = OneHotEncoder(
@@ -813,12 +988,20 @@ def onehot_encode_categories(
         dtype=np.int8,
     )
 
-    train_array = encoder.fit_transform(
-        X_train[ONEHOT_COLUMNS]
+    train_array = (
+        encoder.fit_transform(
+            X_train[
+                ONEHOT_COLUMNS
+            ]
+        )
     )
 
-    test_array = encoder.transform(
-        X_test[ONEHOT_COLUMNS]
+    test_array = (
+        encoder.transform(
+            X_test[
+                ONEHOT_COLUMNS
+            ]
+        )
     )
 
     feature_names = (
@@ -899,6 +1082,9 @@ def scale_numeric_features(
 ]:
     """
     Standardise les variables numériques continues.
+
+    Les indicateurs binaires et les variables issues du One-Hot Encoding
+    ne sont pas standardisés.
     """
 
     excluded_from_scaling = set(
@@ -926,6 +1112,18 @@ def scale_numeric_features(
     if not columns_to_scale:
         raise ValueError(
             "Aucune variable numérique continue à standardiser."
+        )
+
+    missing_test_columns = [
+        column
+        for column in columns_to_scale
+        if column not in X_test.columns
+    ]
+
+    if missing_test_columns:
+        raise ValueError(
+            "Variables à standardiser absentes de X_test : "
+            + ", ".join(missing_test_columns)
         )
 
     scaler = StandardScaler()
@@ -977,9 +1175,7 @@ def validate_processed_datasets(
     y_train: pd.Series,
     y_test: pd.Series,
 ) -> None:
-    """
-    Vérifie que les matrices finales sont prêtes pour la modélisation.
-    """
+    """Vérifie que les matrices finales sont prêtes pour la modélisation."""
 
     train_non_numeric = (
         X_train
@@ -999,15 +1195,10 @@ def validate_processed_datasets(
         .tolist()
     )
 
-    indicator_columns = list(
-        INDICATOR_COLUMNS.values()
-    )
-
     indicators_valid = all(
         (
             column in X_train.columns
             and column in X_test.columns
-
             and set(
                 X_train[
                     column
@@ -1016,7 +1207,6 @@ def validate_processed_datasets(
             ).issubset(
                 {0, 1}
             )
-
             and set(
                 X_test[
                     column
@@ -1027,7 +1217,7 @@ def validate_processed_datasets(
             )
         )
         for column
-        in indicator_columns
+        in INDICATOR_COLUMNS.values()
     )
 
     checks = {
@@ -1158,9 +1348,7 @@ def save_datasets(
     str,
     Path,
 ]:
-    """
-    Sauvegarde les quatre jeux Train / Test au format Parquet.
-    """
+    """Sauvegarde les quatre jeux Train / Test au format Parquet."""
 
     output_dir.mkdir(
         parents=True,
@@ -1277,9 +1465,7 @@ def save_preprocessing_artifacts(
     str,
     Path,
 ]:
-    """
-    Sauvegarde les paramètres nécessaires à l'inférence.
-    """
+    """Sauvegarde les paramètres nécessaires à l'inférence."""
 
     output_dir.mkdir(
         parents=True,
@@ -1334,6 +1520,9 @@ def save_preprocessing_artifacts(
     )
 
     metadata = {
+        "schema_version":
+            2,
+
         "target_column":
             TARGET_COLUMN,
 
@@ -1343,6 +1532,12 @@ def save_preprocessing_artifacts(
         "model_input_features":
             MODEL_FEATURE_COLUMNS,
 
+        "categorical_features":
+            CATEGORICAL_FEATURE_COLUMNS,
+
+        "numeric_features":
+            NUMERIC_FEATURE_COLUMNS,
+
         "split": {
             "test_size":
                 TEST_SIZE,
@@ -1351,25 +1546,23 @@ def save_preprocessing_artifacts(
                 RANDOM_STATE,
         },
 
-        "categorical_imputation": {
-            "columns":
-                CATEGORICAL_IMPUTATION_COLUMNS,
-
+        "imputation": {
             "artifact":
                 "imputation_values.joblib",
-        },
 
-        "numeric_imputation": {
-            "columns":
+            "categorical_columns":
+                CATEGORICAL_FEATURE_COLUMNS,
+
+            "conditional_numeric_columns":
                 list(
-                    numeric_imputation_values.keys()
+                    CONDITIONAL_IMPUTATION_RULES.keys()
                 ),
 
-            "artifact":
-                "imputation_values.joblib",
+            "general_numeric_columns":
+                GENERAL_NUMERIC_IMPUTATION_COLUMNS,
 
-            "co2_reduction_wltp_g_km_missing_value":
-                0.0,
+            "informative_zero_columns":
+                INFORMATIVE_ZERO_COLUMNS,
         },
 
         "conditional_imputation": {
@@ -1497,9 +1690,7 @@ def validate_saved_artifacts(
     ],
     final_features: list[str],
 ) -> None:
-    """
-    Vérifie que les artefacts sauvegardés sont rechargeables.
-    """
+    """Vérifie que les artefacts sauvegardés sont rechargeables."""
 
     imputation_payload = joblib.load(
         artifact_paths[
@@ -1547,32 +1738,53 @@ def validate_saved_artifacts(
 
     expected_numeric_columns = (
         set(
-            CONDITIONAL_IMPUTATION_RULES
+            CONDITIONAL_IMPUTATION_RULES.keys()
         )
         | set(
-            RARE_MEDIAN_COLUMNS
+            GENERAL_NUMERIC_IMPUTATION_COLUMNS
         )
     )
 
     checks = {
         "Imputations catégorielles rechargeables":
-            set(
-                categorical_values
-            )
-            == set(
-                CATEGORICAL_IMPUTATION_COLUMNS
+            (
+                isinstance(
+                    categorical_values,
+                    dict,
+                )
+                and set(
+                    categorical_values.keys()
+                )
+                == set(
+                    CATEGORICAL_FEATURE_COLUMNS
+                )
+                and all(
+                    isinstance(
+                        value,
+                        str,
+                    )
+                    and value != ""
+                    for value
+                    in categorical_values.values()
+                )
             ),
 
         "Imputations numériques rechargeables":
             (
-                set(
-                    numeric_values
+                isinstance(
+                    numeric_values,
+                    dict,
                 )
-                == expected_numeric_columns
-
+                and expected_numeric_columns.issubset(
+                    set(
+                        numeric_values.keys()
+                    )
+                )
                 and all(
-                    pd.notna(
-                        value
+                    np.isfinite(
+                        float(
+                            value
+                        )
                     )
                     for value
                     in numeric_values.values()
@@ -1585,7 +1797,6 @@ def validate_saved_artifacts(
                     onehot_encoder,
                     "categories_",
                 )
-
                 and len(
                     onehot_encoder.categories_
                 )
@@ -1600,14 +1811,22 @@ def validate_saved_artifacts(
                     scaler,
                     "mean_",
                 )
-
                 and hasattr(
                     scaler,
                     "scale_",
                 )
-
                 and len(
                     scaler.mean_
+                )
+                == len(
+                    metadata[
+                        "standardization"
+                    ][
+                        "columns"
+                    ]
+                )
+                and len(
+                    scaler.scale_
                 )
                 == len(
                     metadata[
@@ -1673,13 +1892,7 @@ def run_preprocessing(
     nrows: int | None = None,
     suffix: str = "",
 ) -> None:
-    """
-    Exécute le preprocessing Train / Test complet.
-    """
-
-    # -----------------------------------------------------------------
-    # 1. Chargement
-    # -----------------------------------------------------------------
+    """Exécute le preprocessing Train / Test complet."""
 
     df = load_data(
         input_path=input_path,
@@ -1689,10 +1902,6 @@ def run_preprocessing(
     validate_input_schema(
         df
     )
-
-    # -----------------------------------------------------------------
-    # 2. Split Train / Test
-    # -----------------------------------------------------------------
 
     (
         X_train,
@@ -1705,10 +1914,6 @@ def run_preprocessing(
 
     del df
 
-    # -----------------------------------------------------------------
-    # 3. Imputation catégorielle
-    # -----------------------------------------------------------------
-
     (
         X_train,
         X_test,
@@ -1718,15 +1923,6 @@ def run_preprocessing(
         X_test=X_test,
     )
 
-    validate_categorical_features(
-        X_train=X_train,
-        X_test=X_test,
-    )
-
-    # -----------------------------------------------------------------
-    # 4. Indicateurs binaires
-    # -----------------------------------------------------------------
-
     (
         X_train,
         X_test,
@@ -1734,10 +1930,6 @@ def run_preprocessing(
         X_train=X_train,
         X_test=X_test,
     )
-
-    # -----------------------------------------------------------------
-    # 5. Imputation numérique
-    # -----------------------------------------------------------------
 
     (
         X_train,
@@ -1748,10 +1940,6 @@ def run_preprocessing(
         X_test=X_test,
     )
 
-    # -----------------------------------------------------------------
-    # 6. One-Hot Encoding
-    # -----------------------------------------------------------------
-
     (
         X_train,
         X_test,
@@ -1761,10 +1949,6 @@ def run_preprocessing(
         X_train=X_train,
         X_test=X_test,
     )
-
-    # -----------------------------------------------------------------
-    # 7. Standardisation
-    # -----------------------------------------------------------------
 
     (
         X_train,
@@ -1779,10 +1963,6 @@ def run_preprocessing(
         ),
     )
 
-    # -----------------------------------------------------------------
-    # 8. Validation finale
-    # -----------------------------------------------------------------
-
     validate_processed_datasets(
         X_train=X_train,
         X_test=X_test,
@@ -1795,10 +1975,6 @@ def run_preprocessing(
         f"{X_train.shape[1]} variables"
     )
 
-    # -----------------------------------------------------------------
-    # 9. Sauvegarde datasets
-    # -----------------------------------------------------------------
-
     save_datasets(
         X_train=X_train,
         X_test=X_test,
@@ -1807,10 +1983,6 @@ def run_preprocessing(
         output_dir=data_output_dir,
         suffix=suffix,
     )
-
-    # -----------------------------------------------------------------
-    # 10. Sauvegarde artefacts
-    # -----------------------------------------------------------------
 
     artifact_paths = (
         save_preprocessing_artifacts(
@@ -1843,10 +2015,6 @@ def run_preprocessing(
         )
     )
 
-    # -----------------------------------------------------------------
-    # 11. Validation du rechargement
-    # -----------------------------------------------------------------
-
     validate_saved_artifacts(
         artifact_paths=(
             artifact_paths
@@ -1869,9 +2037,7 @@ def run_preprocessing(
 # =====================================================================
 
 def parse_args() -> argparse.Namespace:
-    """
-    Définit les modes TEST et FULL.
-    """
+    """Définit les modes TEST et FULL."""
 
     parser = argparse.ArgumentParser(
         description=(
@@ -1913,9 +2079,7 @@ def parse_args() -> argparse.Namespace:
 # =====================================================================
 
 def main() -> None:
-    """
-    Point d'entrée du script.
-    """
+    """Point d'entrée du script."""
 
     args = parse_args()
 
