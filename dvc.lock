@@ -39,21 +39,21 @@ stages:
     deps:
     - path: data/interim/data_2024_features.csv
       hash: md5
-      md5: 34d520b15bd788b6eb8b731bdd4658f9
-      size: 1024703830
+      md5: c5906b6585c3fd87c6b0331503127e38
+      size: 1022826871
     - path: src/vehicle_emissions/preprocessing/train_test_preprocessing.py
       hash: md5
-      md5: 38270530ef782daf70ba9920917b8126
-      size: 38007
+      md5: 674048abb070ee3f2c3877e37ebb3e81
+      size: 46390
     outs:
     - path: data/processed/X_test_processed.parquet
       hash: md5
-      md5: f6ec545f5112c443be488441abf9d156
-      size: 38188098
+      md5: 5580589f0d89d1e307711820e40c7729
+      size: 35973677
     - path: data/processed/X_train_processed.parquet
       hash: md5
-      md5: 2c6996a4b7888c48a198e03d4cbcc5e2
-      size: 152257662
+      md5: 85bb306609dbe2bb3108a3ff1369d055
+      size: 143418163
     - path: data/processed/y_test.parquet
       hash: md5
       md5: 151b449ff38dd0ee1399e91ee63dbe6e
@@ -64,24 +64,20 @@ stages:
       size: 57209276
     - path: models/preprocessing/imputation_values.joblib
       hash: md5
-      md5: 2d5c02eea1d95a3cb1ecfc9b21e6164b
-      size: 304
-    - path: models/preprocessing/manufacturer_frequency_map.joblib
-      hash: md5
-      md5: 21690545301317625d0383d0cb3c1487
-      size: 18693
+      md5: c625df30ac6f634f13a9f65b23616a0f
+      size: 440
     - path: models/preprocessing/onehot_encoder.joblib
       hash: md5
-      md5: 1bc80b5ffa82fa270dbfb69cbb85508f
-      size: 1582
+      md5: 07a12f21b9341fdd01b9fc138332c53a
+      size: 1549
     - path: models/preprocessing/preprocessing_metadata.json
       hash: md5
-      md5: 64a8c8e325246675e8015b27e1e56269
-      size: 3951
+      md5: c4b420b08532cb62d0d2fd7aa6d193e3
+      size: 5048
     - path: models/preprocessing/standard_scaler.joblib
       hash: md5
-      md5: a6dc46a5e4b17ba21ee3695737237cf4
-      size: 1343
+      md5: 868b8f129668e44f48d03c005e7302a0
+      size: 1303
   train_regression_model:
     cmd: python -m vehicle_emissions.training.train_regression_model --full
     deps:
