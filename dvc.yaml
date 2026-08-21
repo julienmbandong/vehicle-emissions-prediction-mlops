@@ -32,7 +32,6 @@ stages:
       - data/processed/X_test_processed.parquet
       - data/processed/y_train.parquet
       - data/processed/y_test.parquet
-      - models/preprocessing/manufacturer_frequency_map.joblib
       - models/preprocessing/imputation_values.joblib
       - models/preprocessing/onehot_encoder.joblib
       - models/preprocessing/standard_scaler.joblib
