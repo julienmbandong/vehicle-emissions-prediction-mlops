@@ -83,12 +83,12 @@ stages:
     deps:
     - path: data/processed/X_test_processed.parquet
       hash: md5
-      md5: f6ec545f5112c443be488441abf9d156
-      size: 38188098
+      md5: 5580589f0d89d1e307711820e40c7729
+      size: 35973677
     - path: data/processed/X_train_processed.parquet
       hash: md5
-      md5: 2c6996a4b7888c48a198e03d4cbcc5e2
-      size: 152257662
+      md5: 85bb306609dbe2bb3108a3ff1369d055
+      size: 143418163
     - path: data/processed/y_test.parquet
       hash: md5
       md5: 151b449ff38dd0ee1399e91ee63dbe6e
@@ -99,21 +99,21 @@ stages:
       size: 57209276
     - path: models/metadata/random_forest_regression_metadata.json
       hash: md5
-      md5: e9959f3b77110a7610ede571221d5847
-      size: 744
+      md5: d4ff2198ab0bf941494c9f1f2816d215
+      size: 2291
     - path: src/vehicle_emissions/training/train_regression_model.py
       hash: md5
-      md5: dbf7f5659d8bf2768fb2e9d3657d1c40
-      size: 20791
+      md5: 1e0ab9aa7fb3edc8c4dbbb3e3cc0029d
+      size: 35931
     outs:
     - path: models/trained/random_forest_regressor.joblib
       hash: md5
-      md5: 3289b51dbc0989c025e0db75e2c63bb2
-      size: 362994747
+      md5: f314726b42ec615370c938fd7d7f1280
+      size: 1542926353
     - path: models/trained/random_forest_regressor_training_metadata.json
       hash: md5
-      md5: 1890e2c020868dcfb6802394c53574c2
-      size: 775
+      md5: 0961338ffbac68eeba22ba914c37a0d4
+      size: 3509
   train_classification_model:
     cmd: python -m vehicle_emissions.training.train_classification_model --full
     deps:
