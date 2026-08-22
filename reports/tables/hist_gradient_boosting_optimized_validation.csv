@@ -1,0 +1,3 @@
+modele,jeu_evaluation,observations,MAE_g_co2_km,RMSE_g_co2_km,R2
+HistGradientBoosting optimisé,Validation croisée interne,400000,1.2747246131170795,,
+HistGradientBoosting optimisé,Validation externe,100000,1.270530384178597,3.7808504251367534,0.9957241572744303
