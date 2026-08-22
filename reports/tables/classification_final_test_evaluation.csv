@@ -1,0 +1,2 @@
+Modèle,Observations,Accuracy,Balanced Accuracy,F1-macro,F1-weighted
+Random Forest optimisé,2151637,0.9890060451646816,0.9846749170056665,0.9849958050507316,0.9890061502073161

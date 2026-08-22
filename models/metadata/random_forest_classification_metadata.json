@@ -1,6 +1,7 @@
 {
     "problem_type": "multiclass_classification",
     "model_selected": "RandomForestClassifier",
+    "model_name": "random_forest_classifier",
     "target_original": "co2_wltp_g_km",
     "target_classification": "co2_emission_class",
     "classes": [
@@ -41,6 +42,7 @@
         "inf"
     ],
     "selection_metric": "f1_macro",
+    "selected_configuration": "Random Forest optimisé",
     "best_random_forest_params": {
         "n_estimators": 100,
         "min_samples_split": 2,
@@ -50,18 +52,68 @@
         "random_state": 42,
         "n_jobs": -1
     },
+    "features": [
+        "mass_running_order_kg",
+        "wltp_test_mass_kg",
+        "engine_capacity_cm3",
+        "engine_power_kw",
+        "electric_energy_consumption_wh_km",
+        "co2_reduction_wltp_g_km",
+        "fuel_consumption",
+        "electric_range_km",
+        "registration_month_sin",
+        "registration_month_cos",
+        "has_electric_energy_consumption_wh_km",
+        "has_electric_range_km",
+        "has_fuel_consumption",
+        "has_co2_reduction_wltp_g_km",
+        "vehicle_category_type_M1",
+        "vehicle_category_type_M1G",
+        "vehicle_category_type_N1",
+        "vehicle_category_type_N1G",
+        "vehicle_category_type_N2",
+        "fuel_type_diesel",
+        "fuel_type_diesel/electric",
+        "fuel_type_e85",
+        "fuel_type_electric",
+        "fuel_type_hydrogen",
+        "fuel_type_lpg",
+        "fuel_type_ng",
+        "fuel_type_petrol",
+        "fuel_type_petrol/electric",
+        "fuel_type_unknown",
+        "fuel_mode_B",
+        "fuel_mode_E",
+        "fuel_mode_F",
+        "fuel_mode_H",
+        "fuel_mode_M",
+        "fuel_mode_P"
+    ],
+    "feature_count": 35,
+    "excluded_features": [
+        "manufacturer_make"
+    ],
     "train_full": {
         "observations": 8606547,
-        "features": 41
+        "features": 35
+    },
+    "development": {
+        "observations": 500000,
+        "train_observations": 400000,
+        "validation_observations": 100000
+    },
+    "validation": {
+        "f1_macro_reference": 0.9839271451423405,
+        "f1_macro_optimized": 0.9846705881963276,
+        "f1_macro_gain": 0.0007434430539871029,
+        "best_cv_f1_macro": 0.9829760854970088
     },
     "test_final": {
         "observations": 2151637,
-        "features": 41
-    },
-    "validation": {
-        "observations": 100000,
-        "f1_macro_reference": 0.9848592836409262,
-        "f1_macro_optimized": 0.9854533380418005,
-        "f1_macro_gain": 0.0005940544008742332
+        "features": 35,
+        "accuracy": 0.9890060451646816,
+        "balanced_accuracy": 0.9846749170056665,
+        "f1_macro": 0.9849958050507316,
+        "f1_weighted": 0.9890061502073161
     }
 }
